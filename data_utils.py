@@ -1,15 +1,38 @@
 import os
 import pandas as pd
+import streamlit as st
 
 
-def load_course_catalog(path='data/course_catalog.xlsx'):
+def load_course_catalog(path='data/Course_Catalog.xlsx'):
     catalog = pd.read_excel(path)
-    # Filter only graded (not pass/fail) courses
+    st.write("📋 Raw Course Catalog Columns:", catalog.columns.tolist())
+    st.write("📄 First few rows of catalog:", catalog.head())
+    
+    # graded = catalog[catalog['Pass/Fail'] == 'FALSE']
+    
+    # valid_codes = graded['Course Code'].astype(str).str.strip().tolist()
+    # credit_hours = graded['Credit Hours'].tolist()
+    
+    # # Dict for weighting
+    # course_credit_map = dict(zip(valid_codes, credit_hours))
+
+    # Normalize the Pass/Fail column to booleans
+    catalog['Pass/Fail'] = catalog['Pass/Fail'].astype(str).str.strip().str.upper()
+    catalog['Pass/Fail'] = catalog['Pass/Fail'].map({'FALSE': False, 'TRUE': True})
+
+    # Filter to only graded courses
     graded = catalog[catalog['Pass/Fail'] == False]
-    valid_codes = graded['Course Code'].str.strip().unique().tolist()
+
+    # Strip course codes
+    valid_codes = graded['Course Code'].astype(str).str.strip().unique().tolist()
+
+    # Create credit weighting map
+    course_credit_map = dict(zip(valid_codes, graded['Credit Hours']))
+
+    
     print(f"Found {len(valid_codes)} valid PAS course codes in the catalog.")
     print(f"Valid PAS course codes: {valid_codes}")
-    return valid_codes
+    return valid_codes, course_credit_map
 
 
 def clean_grade_columns(df, valid_codes):
