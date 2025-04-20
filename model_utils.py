@@ -10,54 +10,55 @@ from sklearn.model_selection import GridSearchCV, StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 from joblib import dump, load
-
-# model_utils.py
-
-import pandas as pd
-import numpy as np
-import joblib
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from imblearn.over_sampling import SMOTE  # Import SMOTE
 from xgboost import XGBClassifier
-from imblearn.over_sampling import SMOTE
-from xgboost import XGBClassifier
-from sklearn.preprocessing import StandardScaler
+from scipy.special import expit
+
+
+
 
 def train_model(X, y, features, credit_weights):
     print("\n🧠 Applying SMOTE to balance the dataset...")
     
-    # Apply SMOTE for class balance
+    # Apply SMOTE
     smote = SMOTE(random_state=42)
     X_resampled, y_resampled = smote.fit_resample(X, y)
     print(f"✅ Resampled dataset shape: {X_resampled.shape}")
+    print(pd.Series(y_resampled).value_counts())
 
-    # Apply credit hour weights to resampled data
+    # Apply credit hour weights
     print("\n🔢 Applying credit hour weights...")
     X_weighted = X_resampled.copy()
     for feature, weight in credit_weights.items():
         if feature in X_weighted.columns:
             X_weighted[feature] *= weight
 
-    # Scale the weighted features
+    # Scale features
     print("\n🧠 Scaling the features...")
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X_weighted)
 
-    # Train the XGBoost model
+    # Train XGBoost model with a fixed scale_pos_weight
     print("\n🧠 Training XGBoost model...")
+    num_neg = sum(y_resampled == 0)
+    num_pos = sum(y_resampled == 1)
+    scale_pos_weight = num_neg / num_pos if num_pos > 0 else 1  # Avoid div by 0
+
     model = XGBClassifier(
-        scale_pos_weight=len(y_resampled[y_resampled == 0]) / len(y_resampled[y_resampled == 1]),  # Handle imbalance
-        n_estimators=200,  # Number of trees
-        max_depth=6,  # Tree depth
-        learning_rate=0.1,  # Shrinkage step size
-        random_state=42, 
-        use_label_encoder=False  # Avoid warnings
+        scale_pos_weight=scale_pos_weight,  # Use imbalance ratio
+        n_estimators=200,
+        max_depth=6,
+        learning_rate=0.1,
+        random_state=42,
+        use_label_encoder=False,
+        eval_metric='logloss'
     )
     model.fit(X_scaled, y_resampled)
+
+    # Show probability distributions (for debugging)
+    print("🔍 Sample predicted probabilities (training set):")
+    print(model.predict_proba(X_scaled)[:10])
+
     return model, scaler
 
 
@@ -101,24 +102,39 @@ def train_model(X, y, features, credit_weights):
 #     model.fit(X_scaled, y)
 #     return model, scaler
 
-def evaluate_model(model, scaler, X, y, features):
+def evaluate_model(model, scaler, X, y, features, threshold=0.2):
     print("\n📊 Evaluating XGBoost model performance...")
 
+    # Scale features
     X_scaled = scaler.transform(X)
-    y_pred = model.predict(X_scaled)
-    y_proba = model.predict_proba(X_scaled)[:, 1]  # Probability for positive class
+
+    # Predict probabilities for positive class (Pass = 1)
+    y_proba = model.predict_proba(X_scaled)[:, 1]
+
+    # Apply custom threshold to get final predictions
+    y_pred = (y_proba >= threshold).astype(int)
+    print(f"📏 Using custom threshold: {threshold}")
+
+    # Show prediction stats
+    print("\n🔍 Predicted class distribution:")
+    print(pd.Series(y_pred).value_counts())
+
+    print("\n🔍 Probability summary stats:")
+    print(pd.Series(y_proba).describe())
 
     # Performance metrics
     acc = accuracy_score(y, y_pred)
     cm = confusion_matrix(y, y_pred)
     report = classification_report(y, y_pred)
 
-    print("\nModel Performance:")
+    print("\n📊 Model Performance:")
     print(report)
 
     # Plot confusion matrix
     plt.figure(figsize=(6, 4))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=['Fail', 'Pass'], yticklabels=['Fail', 'Pass'])
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                xticklabels=['Fail', 'Pass'],
+                yticklabels=['Fail', 'Pass'])
     plt.title('Confusion Matrix')
     plt.ylabel('Actual')
     plt.xlabel('Predicted')
@@ -132,7 +148,7 @@ def evaluate_model(model, scaler, X, y, features):
         'Importance': importances
     }).sort_values(by='Importance', ascending=False)
 
-    print("\nFeature Importances:")
+    print("\n🌟 Feature Importances:")
     print(importance_df)
 
     return {
@@ -141,6 +157,164 @@ def evaluate_model(model, scaler, X, y, features):
         'feature_importance': importance_df
     }
 
+def predict_outcome(df, model, scaler, credit_weights, features, threshold=0.2):
+    """
+    Given raw grade data, applies credit weighting, scaling, and predicts pass/fail with a custom threshold.
+    
+    Parameters:
+    - df: DataFrame of raw student grades
+    - model: Trained model
+    - scaler: Trained scaler
+    - credit_weights: Dict mapping course to credit weight
+    - features: List of expected PAS course columns (ordered)
+    - threshold: Probability threshold for classification (default: 0.2)
+    
+    Returns:
+    - DataFrame with 'Predicted Result' and 'Probability of Passing'
+    """
+
+    df_copy = df.copy()
+
+    # Apply credit hour weights
+    for course, weight in credit_weights.items():
+        if course in df_copy.columns:
+            df_copy[course] *= weight
+
+    # Align with expected features
+    df_copy = df_copy.reindex(columns=features, fill_value=np.nan)
+    df_copy = df_copy.fillna(df_copy.mean())
+
+    # Scale features
+    X_scaled = scaler.transform(df_copy)
+
+    # Predict probabilities and apply threshold
+    y_proba = model.predict_proba(X_scaled)[:, 1]
+    y_pred = (y_proba >= threshold).astype(int)
+
+    # Return results DataFrame
+    results = pd.DataFrame({
+        "Predicted Result": ["Pass" if pred == 1 else "Fail" for pred in y_pred],
+        "Probability of Passing": y_proba
+    })
+
+    return results
+
+def predict_outcome(df, model, scaler, credit_weights, features, threshold=0.2):
+
+    df_copy = df.copy()
+
+    # Apply credit hour weights
+    for course, weight in credit_weights.items():
+        if course in df_copy.columns:
+            df_copy[course] *= weight
+
+    # Align and clean
+    df_copy = df_copy.reindex(columns=features, fill_value=np.nan)
+    df_copy = df_copy.fillna(df_copy.mean())
+
+    # Scale features
+    X_scaled = scaler.transform(df_copy)
+
+    # Predict pass probabilities
+    y_proba = model.predict_proba(X_scaled)[:, 1]
+    y_pred = (y_proba >= threshold).astype(int)
+    
+    # Feature importances from model
+    importance_array = model.feature_importances_
+    importance_df = pd.DataFrame({'Feature': features, 'Importance': importance_array})
+    importance_df = importance_df.sort_values(by='Importance', ascending=False)
+
+    # Calculate Weighted Grade Average
+    top_features = importance_df.head(10)['Feature'].tolist()
+    weights = importance_df.set_index('Feature')['Importance']
+    weights = weights.loc[top_features]
+    normalized_weights = weights / weights.sum()
+
+    weighted_grades = pd.DataFrame()
+    for feature in normalized_weights.index:
+        weighted_grades[feature] = df_copy[feature] * normalized_weights[feature]
+    
+    weighted_avg = weighted_grades.sum(axis=1)
+
+    # Adjust these based on your grade scale
+    midpoint = 275  # center of your typical weighted GPA distribution
+    scale = 15
+
+    prob_weighted = expit((weighted_avg - midpoint) / scale)
+
+    # Define thresholds using quantiles
+    threshold_at_risk = weighted_avg.quantile(0.25)
+    threshold_borderline = weighted_avg.quantile(0.50)
+
+    def assign_weighted_risk(score):
+        if score < threshold_at_risk:
+            return "At Risk"
+        elif score < threshold_borderline:
+            return "Borderline"
+        else:
+            return "Safe"
+
+    weighted_risk = weighted_avg.apply(assign_weighted_risk)
+
+    # Return result DataFrame
+    results = pd.DataFrame({
+    "Predicted Result": ["Pass" if pred == 1 else "Fail" for pred in y_pred],
+    "Probability (Model)": y_proba,
+    "Probability (Weighted GPA)": prob_weighted,
+    "Weighted Grade Average": weighted_avg.round(2),
+    "Risk Category": weighted_risk
+})
+
+    return results
+
+
+
+# def evaluate_model(model, scaler, X, y, features):
+#     print("\n📊 Evaluating XGBoost model performance...")
+
+#     X_scaled = scaler.transform(X)
+#     y_pred = model.predict(X_scaled)
+#     y_proba = model.predict_proba(X_scaled)[:, 1]  # Probability for positive class
+
+#     # Performance metrics
+#     acc = accuracy_score(y, y_pred)
+#     cm = confusion_matrix(y, y_pred)
+#     report = classification_report(y, y_pred)
+
+#     print("🔍 Predicted class distribution:")
+#     print(pd.Series(y_pred).value_counts())
+
+#     print("🔍 Probability summary stats:")
+#     print(pd.Series(y_proba).describe())
+
+#     print("\nModel Performance:")
+#     print(report)
+
+#     # Plot confusion matrix
+#     plt.figure(figsize=(6, 4))
+#     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=['Fail', 'Pass'], yticklabels=['Fail', 'Pass'])
+#     plt.title('Confusion Matrix')
+#     plt.ylabel('Actual')
+#     plt.xlabel('Predicted')
+#     plt.tight_layout()
+#     plt.show()
+
+#     # Feature importances
+#     importances = model.feature_importances_
+#     importance_df = pd.DataFrame({
+#         'Feature': features,
+#         'Importance': importances
+#     }).sort_values(by='Importance', ascending=False)
+
+#     print("\nFeature Importances:")
+#     print(importance_df)
+
+#     return {
+#         'accuracy': acc,
+#         'confusion_matrix': cm,
+#         'feature_importance': importance_df
+#     }
+#---
 # def evaluate_model(model, scaler, X, y, features):
 #     print("\n📊 Evaluating model performance...")
 

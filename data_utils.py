@@ -5,8 +5,8 @@ import streamlit as st
 
 def load_course_catalog(path='data/Course_Catalog.xlsx'):
     catalog = pd.read_excel(path)
-    st.write("📋 Raw Course Catalog Columns:", catalog.columns.tolist())
-    st.write("📄 First few rows of catalog:", catalog.head())
+    #st.write("📋 Raw Course Catalog Columns:", catalog.columns.tolist())
+    #st.write("📄 First few rows of catalog:", catalog.head())
     
     # graded = catalog[catalog['Pass/Fail'] == 'FALSE']
     
