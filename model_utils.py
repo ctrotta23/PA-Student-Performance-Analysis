@@ -13,7 +13,9 @@ from joblib import dump, load
 from imblearn.over_sampling import SMOTE  # Import SMOTE
 from xgboost import XGBClassifier
 from scipy.special import expit
-
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.model_selection import train_test_split
 
 
 
@@ -62,45 +64,6 @@ def train_model(X, y, features, credit_weights):
     return model, scaler
 
 
-
-
-
-# def train_model(X, y, features):
-#     print("\n🧠 Applying SMOTE to balance the dataset...")
-    
-#     # Apply SMOTE
-#     smote = SMOTE(random_state=42)
-#     X_resampled, y_resampled = smote.fit_resample(X, y)
-#     print(f"✅ Resampled dataset shape: {X_resampled.shape}")
-
-#     print("\n🧠 Training Random Forest model with class weights...")
-#     scaler = StandardScaler()
-#     X_scaled = scaler.fit_transform(X_resampled)  # Use resampled data for scaling
-
-#     model = RandomForestClassifier(
-#         class_weight='balanced',
-#         n_estimators=100,
-#         min_samples_split=5,
-#         random_state=42
-#     )
-#     model.fit(X_scaled, y_resampled)  # Train model with resampled data
-#     return model, scaler
-
-# def train_model(X, y, features):
-#     print("\n🧠 Training Random Forest model with class weights...")
-
-#     scaler = StandardScaler()
-#     X_scaled = scaler.fit_transform(X)
-
-#     model = RandomForestClassifier(
-#         class_weight='balanced',
-#         n_estimators=100,
-#         min_samples_split=5,
-#         random_state=42
-#     )
-
-#     model.fit(X_scaled, y)
-#     return model, scaler
 
 def evaluate_model(model, scaler, X, y, features, threshold=0.2):
     print("\n📊 Evaluating XGBoost model performance...")
@@ -269,91 +232,6 @@ def predict_outcome(df, model, scaler, credit_weights, features, threshold=0.2):
 
 
 
-# def evaluate_model(model, scaler, X, y, features):
-#     print("\n📊 Evaluating XGBoost model performance...")
-
-#     X_scaled = scaler.transform(X)
-#     y_pred = model.predict(X_scaled)
-#     y_proba = model.predict_proba(X_scaled)[:, 1]  # Probability for positive class
-
-#     # Performance metrics
-#     acc = accuracy_score(y, y_pred)
-#     cm = confusion_matrix(y, y_pred)
-#     report = classification_report(y, y_pred)
-
-#     print("🔍 Predicted class distribution:")
-#     print(pd.Series(y_pred).value_counts())
-
-#     print("🔍 Probability summary stats:")
-#     print(pd.Series(y_proba).describe())
-
-#     print("\nModel Performance:")
-#     print(report)
-
-#     # Plot confusion matrix
-#     plt.figure(figsize=(6, 4))
-#     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=['Fail', 'Pass'], yticklabels=['Fail', 'Pass'])
-#     plt.title('Confusion Matrix')
-#     plt.ylabel('Actual')
-#     plt.xlabel('Predicted')
-#     plt.tight_layout()
-#     plt.show()
-
-#     # Feature importances
-#     importances = model.feature_importances_
-#     importance_df = pd.DataFrame({
-#         'Feature': features,
-#         'Importance': importances
-#     }).sort_values(by='Importance', ascending=False)
-
-#     print("\nFeature Importances:")
-#     print(importance_df)
-
-#     return {
-#         'accuracy': acc,
-#         'confusion_matrix': cm,
-#         'feature_importance': importance_df
-#     }
-#---
-# def evaluate_model(model, scaler, X, y, features):
-#     print("\n📊 Evaluating model performance...")
-
-#     X_scaled = scaler.transform(X)
-#     y_pred = model.predict(X_scaled)
-
-#     # Performance metrics
-#     acc = accuracy_score(y, y_pred)
-#     cm = confusion_matrix(y, y_pred)
-#     report = classification_report(y, y_pred)
-
-#     print("\nModel Performance:")
-#     print(report)
-
-#     # Plot confusion matrix
-#     plt.figure(figsize=(6, 4))
-#     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=['Fail', 'Pass'], yticklabels=['Fail', 'Pass'])
-#     plt.title('Confusion Matrix')
-#     plt.ylabel('Actual')
-#     plt.xlabel('Predicted')
-#     plt.tight_layout()
-#     plt.show()
-
-#     # Feature importances
-#     importances = model.feature_importances_
-#     importance_df = pd.DataFrame({
-#         'Feature': features,
-#         'Importance': importances
-#     }).sort_values(by='Importance', ascending=False)
-
-#     print("\nFeature Importances:")
-#     print(importance_df)
-
-#     return {
-#         'accuracy': acc,
-#         'confusion_matrix': cm,
-#         'feature_importance': importance_df
-#     }
-
 def save_model(model, scaler, path_model='model.xgb', path_scaler='scaler.pkl'):
     joblib.dump(model, path_model)  # Save XGBoost model using joblib
     joblib.dump(scaler, path_scaler)
@@ -363,103 +241,64 @@ def load_model(path_model='model.xgb', path_scaler='scaler.pkl'):
     scaler = joblib.load(path_scaler)
     return model, scaler
 
+def train_linear_regression(X, y, features, credit_weights=None):
+    print("\n📈 Training Linear Regression model WITHOUT credit weighting...")
 
-# def save_model(model, scaler, path_model='model.pkl', path_scaler='scaler.pkl'):
-#     joblib.dump(model, path_model)
-#     joblib.dump(scaler, path_scaler)
+    # No credit weighting here
+
+    # Scale features
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    # Train-test split
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_scaled, y, test_size=0.3, random_state=42
+    )
+
+    model = LinearRegression()
+    model.fit(X_train, y_train)
+
+    y_pred = model.predict(X_test)
+    mse = mean_squared_error(y_test, y_pred)
+    rmse = np.sqrt(mse)
+    r2 = r2_score(y_test, y_pred)
+
+    metrics = {"mse": mse, "rmse": rmse, "r2": r2}
+    return model, scaler, metrics
 
 
-# def load_model(path_model='model.pkl', path_scaler='scaler.pkl'):
-#     model = joblib.load(path_model)
-#     scaler = joblib.load(path_scaler)
-#     return model, scaler
+# def train_linear_regression(X, y, features, credit_weights):
+#     print("\n📈 Training Linear Regression model for PANCE score prediction...")
 
-
-# def train_model(X, y, features, course_credit_map=None):
-#     # Apply course weighting
-#     if course_credit_map:
-#         for col in features:
-#             if col in X.columns:
-#                 X[col] = X[col] * course_credit_map.get(col, 1)
-
-#     # Fill missing values
-#     X = X.fillna(X.mean())
+#     # Apply credit hour weights
+#     X_weighted = X.copy()
+#     for feature in features:
+#         if feature in credit_weights:
+#             X_weighted[feature] *= credit_weights[feature]
 
 #     # Scale features
 #     scaler = StandardScaler()
-#     X_scaled = scaler.fit_transform(X)
+#     X_scaled = scaler.fit_transform(X_weighted)
 
-#     # Grid search with RandomForestClassifier
-#     param_grid = {
-#         'n_estimators': [50, 100, 200],
-#         'max_depth': [None, 10, 20],
-#         'min_samples_split': [2, 5]
-#     }
-
-#     grid_search = GridSearchCV(
-#         RandomForestClassifier(class_weight='balanced', random_state=42),
-#         param_grid,
-#         cv=StratifiedKFold(n_splits=5),
-#         scoring='balanced_accuracy',
-#         n_jobs=-1
+#     # Train-test split
+#     X_train, X_test, y_train, y_test = train_test_split(
+#         X_scaled, y, test_size=0.3, random_state=42
 #     )
 
-#     grid_search.fit(X_scaled, y)
-#     best_model = grid_search.best_estimator_
+#     # Fit regression model
+#     model = LinearRegression()
+#     model.fit(X_train, y_train)
 
-#     return best_model, scaler
+#     # Evaluate
+#     y_pred = model.predict(X_test)
+#     mse = mean_squared_error(y_test, y_pred)
+#     rmse = np.sqrt(mse)
+#     r2 = r2_score(y_test, y_pred)
 
-# def evaluate_model(model, scaler, X, y, features):
-#     X = X.fillna(X.mean())
-#     X_scaled = scaler.transform(X)
-#     y_pred = model.predict(X_scaled)
-
-#     print("\nModel Performance:")
-#     print(classification_report(y, y_pred))
-
-#     cm = confusion_matrix(y, y_pred)
-#     plt.figure(figsize=(8, 6))
-#     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
-#                 xticklabels=['Fail', 'Pass'],
-#                 yticklabels=['Fail', 'Pass'])
-#     plt.title('Confusion Matrix')
-#     plt.ylabel('Actual')
-#     plt.xlabel('Predicted')
-#     plt.tight_layout()
-#     plt.savefig("confusion_matrix.png")
-
-#     # Feature importance
-#     importances = model.feature_importances_
-#     feature_len = len(features)
-#     importances = importances[:feature_len]  # ensure alignment
-#     importance_df = pd.DataFrame({
-#         'Feature': features,
-#         'Importance': importances
-#     }).sort_values('Importance', ascending=False)
-
-#     print("\nFeature Importances:")
-#     print(importance_df)
-
-#     plt.figure(figsize=(12, 8))
-#     sns.barplot(x='Importance', y='Feature', data=importance_df)
-#     plt.title('Random Forest Feature Importances')
-#     plt.tight_layout()
-#     plt.savefig("feature_importances.png")
-
-#     return {
-#         'accuracy': accuracy_score(y, y_pred),
-#         'confusion_matrix': cm,
-#         'feature_importances': importance_df
-#     }
-
-# def save_model(model, scaler, model_path='model.pkl', scaler_path='scaler.pkl'):
-#     dump(model, model_path)
-#     dump(scaler, scaler_path)
+#     metrics = {"mse": mse, "rmse": rmse, "r2": r2}
+#     return model, scaler, metrics
 
 
-# def load_model(model_path='model.pkl', scaler_path='scaler.pkl'):
-#     model = joblib.load(model_path)
-#     scaler = joblib.load(scaler_path)
-#     return model, scaler
-
-
+def save_regression_model(model, scaler, model_path="model_pance_score.pkl", scaler_path="scaler_pance_score.pkl"):
+    joblib.dump(model, model_path)
+    joblib.dump(scaler, scaler_path)

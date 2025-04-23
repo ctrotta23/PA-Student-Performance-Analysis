@@ -6,12 +6,15 @@ from data_utils import clean_grade_columns, load_course_catalog
 import os
 from model_utils import load_model, predict_outcome
 from data_utils import load_course_catalog
+from model_utils import save_regression_model 
+from joblib import load as joblib_load
 
 st.set_page_config(page_title="PANCE Pass/Fail Predictor", layout="wide")
 st.title("🩺 PA Student Performance Predictor")
 
 # Create tabs
-tabs = st.tabs(["📂 Upload Grades", "🧑‍🏫 Manual Entry"])
+tabs = st.tabs(["User Guide", "Grade Template Download", "📂 Predict Pass/Fail", "🧑‍🏫 Manual Entry (Single Student)", "📈 PANCE Score Prediction"])
+
 
 # Load model and scaler
 @st.cache_resource
@@ -21,13 +24,37 @@ def get_model_and_scaler():
 
 model, scaler = get_model_and_scaler()
 
+@st.cache_resource
+def get_regression_model():
+    model = joblib_load("model_pance_score.pkl")
+    scaler = joblib_load("scaler_pance_score.pkl")
+    return model, scaler
+
+
 # Load course catalog
 course_codes_raw, course_credit_map = load_course_catalog("data/Course_Catalog.xlsx")
-course_codes = [code.strip() for code in course_codes_raw]
+# course_codes = [code.strip() for code in course_codes_raw]
+course_codes = sorted(course_credit_map.keys())
 
-# === Tab 1: File Upload (wrap existing logic) ===
+
+# Fix formatting if needed
+if isinstance(course_codes_raw, (pd.Series, np.ndarray)):
+    course_codes = [str(code).strip() for code in course_codes_raw.tolist()]
+else:
+    course_codes = [str(code).strip() for code in course_codes_raw]
+
+
 with tabs[0]:
+    st.title("📖 User Guide")
+    st.markdown("This app allows you to upload student grade data and predict their risk of failing the PANCE exam.")
+    st.markdown("1. **Download the Grade Input Template**: Use the template to prepare your student grade data for upload.")
+    st.markdown("2. **Predict Pass/Fail**: Upload a CSV or Excel file containing student grades.")
+    st.markdown("3. **Manual Entry (Single Student)**: Enter grades manually for 1-on-1 advising.")
+    st.markdown("4. **Predict PANCE Scores**: Upload grades to predict PANCE scores based on historical data.")
 
+
+
+with tabs[1]:
     st.markdown("Use this template to prepare your student grade data for upload.")
     st.markdown("### 📥 Download Grade Input Template")
 
@@ -42,6 +69,10 @@ with tabs[0]:
         mime="text/csv"
     )
 
+# === Tab: File Upload (wrap existing logic) ===
+with tabs[2]:
+    st.subheader("📂 Upload Student Grades for Prediction")
+    
     # File uploader
     uploaded_file = st.file_uploader("📂 Upload Student Grade File (.xlsx or .csv)", type=["xlsx", "csv"])
 
@@ -118,8 +149,8 @@ with tabs[0]:
         st.info("👆 Please upload a file to begin.")
 
 
-# === Tab 2: Manual Entry ===
-with tabs[1]:
+# === Tab: Manual Entry ===
+with tabs[3]:
     st.subheader("🧑‍🏫 Manual Grade Entry for 1-on-1 Advising")
 
     # Collect grades using input boxes
@@ -151,170 +182,96 @@ with tabs[1]:
         st.subheader("🧠 Model Prediction")
         st.dataframe(result, use_container_width=True)
 
-# st.set_page_config(page_title="PANCE Pass/Fail Predictor", layout="wide")
-# st.title("🩺 PA Student Performance Predictor")
 
-# # Load model and scaler with correct unpacking
-# @st.cache_resource
-# def get_model_and_scaler():
-#     model, scaler = load_model()
-#     return model, scaler
+# === Tab: Score Prediction ===
+with tabs[4]:
+    st.subheader("📈 Predict PANCE Scores from Grades")
 
-# model, scaler = get_model_and_scaler()
+    reg_model, reg_scaler = get_regression_model()
 
-# # Load expected course codes
-# course_codes_raw, course_credit_map = load_course_catalog("data/Course_Catalog.xlsx")
-# course_codes = [code.strip() for code in course_codes_raw]
+    uploaded_score_file = st.file_uploader("📂 Upload Student Grades for Score Prediction (.xlsx or .csv)", type=["xlsx", "csv"], key="score")
 
-# # # Ensure course_codes is a clean, flat list of strings
-# # if isinstance(course_codes, pd.Series):
-# #     course_codes = course_codes.tolist()
-# # elif isinstance(course_codes, np.ndarray):
-# #     course_codes = course_codes.flatten().tolist()
+    if uploaded_score_file:
+        try:
+            if uploaded_score_file.name.endswith(".xlsx"):
+                df_score = pd.read_excel(uploaded_score_file)
+            else:
+                df_score = pd.read_csv(uploaded_score_file)
 
-# # # Final fallback: remove any non-string or nested items
-# # course_codes = [str(code).strip() for code in course_codes if isinstance(code, (str, int))]
+            # Normalize column names
+            df_score.columns = [col[:7].strip() if col.startswith("PAS") else col.strip() for col in df_score.columns]
 
+            # Extract IDs
+            ids = df_score['Unique Masked ID'] if 'Unique Masked ID' in df_score.columns else df_score.index.astype(str)
 
-# uploaded_file = st.file_uploader("📂 Upload Student Grade File (.xlsx or .csv)", type=["xlsx", "csv"])
+            # Force all expected columns to be present, in order
+            df_score = df_score.reindex(columns=course_codes)
+            df_score.columns = course_codes # force column names to match exactly
 
-# if uploaded_file:
-#     try:
-#         if uploaded_file.name.endswith(".xlsx"):
-#             input_data = pd.read_excel(uploaded_file)
-#         else:
-#             input_data = pd.read_csv(uploaded_file)
+            # Convert everything to numeric (in case there are str/empty cells)
+            df_score = df_score.apply(pd.to_numeric, errors='coerce')
 
-#         # Normalize column headers by stripping after 6-character course codes
-#         cleaned_columns = []
-#         for col in input_data.columns:
-#             if col.startswith("PAS"):
-#                 cleaned_columns.append(col[:7].strip())  # e.g., PAS 610
-#             else:
-#                 cleaned_columns.append(col.strip())
-#         input_data.columns = cleaned_columns
+            # Fill missing values with column means
+            df_score = df_score.fillna(df_score.mean())
 
-#         if 'Unique Masked ID' in input_data.columns:
-#             ids = input_data['Unique Masked ID']
-#         else:
-#             ids = input_data.index.astype(str)
-        
-#         st.write("📋 Uploaded file columns:", input_data.columns.tolist())
+            # Debug: sanity check before scaling
+            #st.write("Grades before scaling:", df_score.describe())
 
-#         st.write("📋 Cleaned uploaded column names:", input_data.columns.tolist())
-#         st.write("🎯 Expected course codes:", course_codes)
-#         st.write("✅ Type of course_codes:", type(course_codes))
-#         matched_cols = [col for col in course_codes if col in input_data.columns]
-#         st.write("✅ Matched columns:", matched_cols)
-#         st.write(type(course_codes), course_codes)
-#         st.write(type(input_data.columns), input_data.columns.tolist())
-#         st.write(type(matched_cols), matched_cols)
+            # Confirm matching column names before transform
+            if list(df_score.columns) != course_codes:
+                st.write("Model expected:", course_codes)
+                st.write("Input columns:", list(df_score.columns))
+                st.error("Feature mismatch: column names don't match what model was trained on.")
+                st.stop()
 
-#         input_data = input_data[matched_cols]
-
-#         # Filter and align columns
-#         input_data = input_data[[col for col in course_codes if col in input_data.columns]]
-#         if input_data.empty:
-#             raise ValueError("None of the expected PAS course columns were found in the uploaded file.")
-
-#         input_data = input_data.reindex(columns=course_codes, fill_value=np.nan)
-#         input_data = input_data.fillna(input_data.mean())
-
-#         # # Scale the input
-#         # input_scaled = scaler.transform(input_data)
-
-#         # # Predict
-#         # y_pred = model.predict(input_scaled)
-#         # y_proba = model.predict_proba(input_scaled)[:, 1]
-
-#         # Prepare results
-#         results = pd.DataFrame({
-#             "Unique Masked ID": ids,
-#             "Predicted Result": ["Pass" if pred == 1 else "Fail" for pred in y_pred],
-#             "Probability of Passing": y_proba
-#         })
+            # # Apply credit weights
+            # for col, weight in course_credit_map.items():
+            #     if col in df_score.columns:
+            #         df_score[col] *= weight
 
 
-#         st.subheader("📊 Prediction Results")
-#         st.dataframe(results, use_container_width=True)
+            expected = course_codes
+            actual = list(df_score.columns)
 
-#         csv = results.to_csv(index=False).encode('utf-8')
-#         st.download_button("⬇️ Download Results as CSV", data=csv, file_name="pance_predictions.csv", mime="text/csv")
+            #st.write("✅ Model was trained on:", expected)
+            #st.write("📄 Uploaded file columns (after reindex):", actual)
 
-#     except Exception as e:
-#         st.error(f"⚠️ Error processing file: {e}")
+            missing = [col for col in expected if col not in actual]
+            extra = [col for col in actual if col not in expected]
+            #st.write("❌ Missing columns:", missing)
+            #st.write("🧯 Unexpected columns:", extra)
+            #st.write("🟰 Column order match:", expected == actual)
+            
 
-# else:
-#     st.info("👆 Please upload a file to begin.")
+            # Align columns in order, with valid names
+            # df_score = df_score.reindex(columns=course_codes)
+            # df_score.columns = course_codes  # ensure identical names
+            # df_score = df_score.apply(pd.to_numeric, errors='coerce')
+            # df_score = df_score.fillna(df_score.mean())
 
+            # Debug: sanity check before scaling
+            #st.write("Grades before scaling:", df_score.describe())
 
+            print("Using columns:")
+            print(df_score.columns.tolist())
 
+            # Scale and predict
+            X_scaled = reg_scaler.transform(df_score)  # <- this will work now
+            predictions = reg_model.predict(X_scaled)
 
-# # === Paths ===
-# MODEL_PATH = "model.pkl"
-# COURSE_CATALOG_PATH = "data/Course_Catalog.xlsx"
+            
+            result_df = pd.DataFrame({
+                "Unique Masked ID": ids,
+                "Predicted PANCE Score": np.round(predictions, 1)
+            })
 
-# @st.cache_resource
-# def load_app_components():
-#     model = load_model(MODEL_PATH)
-#     course_codes = load_course_catalog(COURSE_CATALOG_PATH)
-#     return model, course_codes
+            st.subheader("📊 Score Predictions")
+            st.dataframe(result_df, use_container_width=True)
 
-# model, course_codes = load_app_components()
+            csv = result_df.to_csv(index=False).encode("utf-8")
+            st.download_button("⬇️ Download Score Predictions", data=csv, file_name="pance_score_predictions.csv", mime="text/csv")
 
-# st.title("📊 PANCE Outcome Prediction App")
-# st.markdown("""
-# Upload student grade data (PAS course grades only) to predict **Pass/Fail** outcomes
-# on the PANCE certification exam.
-# """)
-
-# # === File Upload ===
-# uploaded_file = st.file_uploader("📁 Upload student grade file (.xlsx or .csv)", type=["xlsx", "csv"])
-
-# if uploaded_file:
-#     try:
-#         if uploaded_file.name.endswith(".csv"):
-#             df_input = pd.read_csv(uploaded_file)
-#         else:
-#             df_input = pd.read_excel(uploaded_file)
-
-#         st.success(f"✅ Successfully loaded file with {len(df_input)} students")
-
-#         # === Clean PAS features ===
-#         df_features = clean_grade_columns(df_input, course_codes)
-
-#         # === Validate columns ===
-#         missing_cols = [col for col in course_codes if col not in df_features.columns]
-#         if missing_cols:
-#             st.error(f"❌ Uploaded file is missing required PAS course columns:\n{missing_cols}")
-#             st.stop()
-
-#         # === Restrict and reorder columns to match model input ===
-#         df_model_input = df_features.reindex(columns=course_codes)
-
-#         # === Tolerate missing grades: fill with mean
-#         df_model_input = df_model_input.fillna(df_model_input.mean())
-
-#         # === Predict
-#         y_pred = model.predict(df_model_input)
-#         y_prob = model.predict_proba(df_model_input)[:, 1]
-
-#         # === Append predictions to original input
-#         df_input = df_input.reset_index(drop=True)
-#         df_input['Prediction'] = np.where(y_pred == 1, 'Pass', 'Fail')
-#         df_input['Probability (Pass)'] = np.round(y_prob, 3)
-
-#         st.subheader("📈 Prediction Results")
-#         st.dataframe(df_input[['Unique Masked ID', 'Prediction', 'Probability (Pass)']])
-
-#         # === Download button
-#         csv = df_input.to_csv(index=False).encode('utf-8')
-#         st.download_button(
-#             label="📥 Download Results",
-#             data=csv,
-#             file_name="pance_predictions.csv",
-#             mime="text/csv"
-#         )
-
-#     except Exception as e:
-#         st.error(f"⚠️ Error processing file: {e}")
+        except Exception as e:
+            st.error(f"⚠️ Error processing file: {e}")
+    else:
+        st.info("👆 Upload a file to get started.")

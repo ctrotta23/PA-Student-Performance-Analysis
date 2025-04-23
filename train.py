@@ -4,6 +4,8 @@ from sklearn.model_selection import train_test_split
 from data_utils import load_all_cohort_data, clean_grade_columns, load_course_catalog
 from model_utils import train_model, evaluate_model, save_model
 import streamlit as st
+from model_utils import train_linear_regression, save_regression_model
+from sklearn.metrics import mean_squared_error, r2_score
 
 if __name__ == "__main__":
     print("🚀 Loading training data...")
@@ -83,29 +85,62 @@ if __name__ == "__main__":
     save_model(model, scaler, path_model='model.pkl', path_scaler='scaler.pkl')
     print("✅ Training complete.")
 
-    # # Apply credit hour weights
-    # credit_weights = pd.Series(course_credit_map)
-    # X_train_weighted = X_train[course_codes] * credit_weights
-    # X_test_weighted = X_test[course_codes] * credit_weights
-
-    # print("\n📊 Class distribution in y_train:")
-    # print(y_train.value_counts(normalize=True))
+# LINEAR REGRESSION: PANCE SCORE PREDICTION
+if 'Score' in df.columns:
+    print("\n📈 Starting linear regression training for PANCE score prediction...")
 
 
-    # print("\n🧠 Training Random Forest model...")
-    # #model, scaler = train_model(X_train, y_train, features=course_codes, credit_weights=course_credit_map)
-    # model, scaler = train_model(X_train_weighted, y_train, features=course_codes, credit_weights=course_credit_map)
+    df_reg = df.dropna(subset=['Score']).copy()
+    X_reg = clean_grade_columns(df_reg, course_codes)
+    X_reg = X_reg.reindex(columns=course_codes)
+    X_reg = X_reg.fillna(X_reg.mean())
+    y_reg = df_reg.loc[X_reg.index, 'Score']
+
+    reg_model, reg_scaler, reg_metrics = train_linear_regression(
+        X_reg, y_reg, course_codes
+    )
+
+
+    # df_reg = df.dropna(subset=['Score']).copy()
+    # # X_reg = clean_grade_columns(df_reg, course_codes)
+    # # X_reg = X_reg.fillna(X_reg.mean())
+    # # y_reg = df_reg.loc[X_reg.index, 'Score']
+
+    # X_reg = clean_grade_columns(df_reg, course_codes) # Extract grade columns
+
+    # # Apply credit weighting to the grades
+    # for course in course_codes:
+    #     if course in X_reg.columns and course in course_credit_map:
+    #         X_reg[course] *= course_credit_map[course]
+
+    # # Ensure order matches training
+    # X_reg = X_reg.reindex(columns=course_codes)
+    # X_reg = X_reg.fillna(X_reg.mean())
+
+    # y_reg = df_reg.loc[X_reg.index, 'Score']
+
+    # # X_reg = X_reg[course_codes]  # force column order
+    # # X_reg = X_reg.fillna(X_reg.mean())
     
+    # # y_reg = df_reg.loc[X_reg.index, 'Score']
 
 
-    # print("\n📊 Evaluating model...")
-    # #metrics = evaluate_model(model, scaler, X_test, y_test, features=course_codes)
-    # #metrics = evaluate_model(model, scaler, X_test_weighted, y_test, features=course_codes)
-    # metrics = evaluate_model(model, scaler, X_test_weighted, y_test, features=course_codes)
-    # print(f"🎯 Accuracy: {metrics['accuracy']:.4f}")
-    # print("📉 Confusion Matrix:")
-    # print(metrics['confusion_matrix'])
+    # print(f"🧮 Regression dataset size: {len(X_reg)} students with PANCE scores")
 
-    # print("\n💾 Saving trained model to 'model.pkl'...")
-    # save_model(model, scaler)
-    # print("✅ Training complete.")
+    # # Train regression model
+    # #reg_model, reg_scaler, reg_metrics = train_linear_regression(X_reg, y_reg, course_codes, course_credit_map)
+    # # Train linear regression model
+    # reg_model, reg_scaler, reg_metrics = train_linear_regression(
+    #     X_reg, y_reg, course_codes, course_credit_map
+    # )
+    print("Fitting scaler on columns:")
+    print(X_reg.columns.tolist())
+
+    print(f"📊 Regression R²: {reg_metrics['r2']:.4f}")
+    print(f"📉 Regression RMSE: {reg_metrics['rmse']:.2f}")
+
+    # Save the regression model + scaler
+    save_regression_model(reg_model, reg_scaler, 'model_pance_score.pkl', 'scaler_pance_score.pkl')
+    print("✅ Regression model saved.")
+else:
+    print("⚠️ No PANCE_Score column found. Skipping regression.")
