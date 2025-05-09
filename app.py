@@ -250,7 +250,7 @@ with tabs[4]:
             # df_score = df_score.fillna(df_score.mean())
 
             # Debug: sanity check before scaling
-            #st.write("Grades before scaling:", df_score.describe())
+            #            git filter-repo --path venv/Lib/site-packages/xgboost/lib/xgboost.dll --invert-paths            git filter-repo --path venv/Lib/site-packages/xgboost/lib/xgboost.dll --invert-pathsst.write("Grades before scaling:", df_score.describe())
 
             print("Using columns:")
             print(df_score.columns.tolist())
