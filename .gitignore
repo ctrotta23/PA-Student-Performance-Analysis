@@ -1,3 +1,8 @@
-# git ignore
-venv/
+# Ignore virtual environment
 .venv/
+venv/
+
+
+# Ignore DLLs
+*.dll
+
