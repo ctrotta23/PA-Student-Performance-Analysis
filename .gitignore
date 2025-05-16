@@ -6,3 +6,6 @@ venv/
 # Ignore DLLs
 *.dll
 
+# ignore pycache
+__pycache__/
+*.py[cod]
