@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from model_utils import load_model
 from data_utils import clean_grade_columns, load_course_catalog
 import os
 from model_utils import load_model, predict_outcome

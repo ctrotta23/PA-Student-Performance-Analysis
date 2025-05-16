@@ -2,7 +2,7 @@ import pandas as pd
 import joblib
 from sklearn.model_selection import train_test_split
 from data_utils import load_all_cohort_data, clean_grade_columns, load_course_catalog
-from model_utils import train_model, evaluate_model, save_model
+from model_utils import train_model, evaluate_model, save_model, load_model
 import streamlit as st
 from model_utils import train_linear_regression, save_regression_model
 from sklearn.metrics import mean_squared_error, r2_score
