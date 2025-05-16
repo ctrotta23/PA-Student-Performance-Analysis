@@ -250,11 +250,11 @@ def predict_outcome(df, model, scaler, credit_weights, features, threshold=0.2):
 
     def assign_weighted_risk(score):
         if score < threshold_at_risk:
-            return "At Risk"
+            return "At Risk 🛑"
         elif score < threshold_borderline:
-            return "Borderline"
+            return "Borderline ⚠️"
         else:
-            return "Safe"
+            return "Safe ✅"
 
     weighted_risk = weighted_avg.apply(assign_weighted_risk)
 
