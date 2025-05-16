@@ -10,23 +10,17 @@ from sklearn.model_selection import GridSearchCV, StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 from joblib import dump, load
-from imblearn.over_sampling import SMOTE  # Import SMOTE
+#from imblearn.over_sampling import SMOTE  # Import SMOTE
 from xgboost import XGBClassifier
 from scipy.special import expit
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 
-
-
 def train_model(X, y, features, credit_weights):
-    print("\n🧠 Applying SMOTE to balance the dataset...")
-    
-    # Apply SMOTE
-    smote = SMOTE(random_state=42)
-    X_resampled, y_resampled = smote.fit_resample(X, y)
-    print(f"✅ Resampled dataset shape: {X_resampled.shape}")
-    print(pd.Series(y_resampled).value_counts())
+    print("\n⚠️ SMOTE removed: using original dataset without resampling.")
+
+    X_resampled, y_resampled = X.copy(), y.copy()
 
     # Apply credit hour weights
     print("\n🔢 Applying credit hour weights...")
@@ -47,7 +41,7 @@ def train_model(X, y, features, credit_weights):
     scale_pos_weight = num_neg / num_pos if num_pos > 0 else 1  # Avoid div by 0
 
     model = XGBClassifier(
-        scale_pos_weight=scale_pos_weight,  # Use imbalance ratio
+        scale_pos_weight=scale_pos_weight,
         n_estimators=200,
         max_depth=6,
         learning_rate=0.1,
@@ -62,6 +56,51 @@ def train_model(X, y, features, credit_weights):
     print(model.predict_proba(X_scaled)[:10])
 
     return model, scaler
+
+
+# def train_model(X, y, features, credit_weights):
+#     print("\n🧠 Applying SMOTE to balance the dataset...")
+    
+#     # Apply SMOTE
+#     smote = SMOTE(random_state=42)
+#     X_resampled, y_resampled = smote.fit_resample(X, y)
+#     print(f"✅ Resampled dataset shape: {X_resampled.shape}")
+#     print(pd.Series(y_resampled).value_counts())
+
+#     # Apply credit hour weights
+#     print("\n🔢 Applying credit hour weights...")
+#     X_weighted = X_resampled.copy()
+#     for feature, weight in credit_weights.items():
+#         if feature in X_weighted.columns:
+#             X_weighted[feature] *= weight
+
+#     # Scale features
+#     print("\n🧠 Scaling the features...")
+#     scaler = StandardScaler()
+#     X_scaled = scaler.fit_transform(X_weighted)
+
+#     # Train XGBoost model with a fixed scale_pos_weight
+#     print("\n🧠 Training XGBoost model...")
+#     num_neg = sum(y_resampled == 0)
+#     num_pos = sum(y_resampled == 1)
+#     scale_pos_weight = num_neg / num_pos if num_pos > 0 else 1  # Avoid div by 0
+
+#     model = XGBClassifier(
+#         scale_pos_weight=scale_pos_weight,  # Use imbalance ratio
+#         n_estimators=200,
+#         max_depth=6,
+#         learning_rate=0.1,
+#         random_state=42,
+#         use_label_encoder=False,
+#         eval_metric='logloss'
+#     )
+#     model.fit(X_scaled, y_resampled)
+
+#     # Show probability distributions (for debugging)
+#     print("🔍 Sample predicted probabilities (training set):")
+#     print(model.predict_proba(X_scaled)[:10])
+
+#     return model, scaler
 
 
 
